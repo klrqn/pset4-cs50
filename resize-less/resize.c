@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
     // make sure resize is under 100
     uint8_t num = atoi(argv[1]);
     // printf("n = %i\n", num);
-    if (num > 100 || n < 2)
+    if (num > 100)
     {
         fprintf(stderr, "n must be less than 100\n");
         return 2;
@@ -59,7 +59,11 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Unsupported file format.\n");
         return 4;
     }
-
+    // create outfiles BITMAPFILEHEADER / INFOHEADER and link to infile headers
+    BITMAPFILEHEADER bfOutfile;
+    bfOutfile = bf;
+    BITMAPINFOHEADER biOutfile;
+    biOutfile = bi;
     // alter new files header for new size BELOW TODO
     // bfSize > The size, in bytes, of the bitmap file
 
@@ -71,57 +75,66 @@ int main(int argc, char *argv[])
 
     // small bf.bfSize = 90
     // large bf.bfSize = 486
-    // int paddingInfile = (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
 
-    bi.biHeight *= num;
-    bi.biWidth *= num;
+    // get the width, height, and padding of the infile image
+    long startingWidth = bi.biWidth;
+    // long startingHeight = bi.biHeight;
+    int paddingInfile = (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
 
-    // updating padding for new width
-    int paddingOutfile = (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
+    // increase the height, witdth, and padding of the header info for the outfile
+    biOutfile.biHeight *= num;
+    biOutfile.biWidth *= num;
+    int paddingOutfile = (4 - (biOutfile.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
 
-    // old - bi.biSizeImage    new - bi.biSizeImage ???n
-    bi.biSizeImage = ((sizeof(RGBTRIPLE) * bi.biWidth) + paddingOutfile) * abs(bi.biHeight);
+    // biSizeImage - total size of image (in bytes) including pixels and padding 3*4 / 12
+    biOutfile.biSizeImage = ((sizeof(RGBTRIPLE) * biOutfile.biWidth) + paddingOutfile) * abs(biOutfile.biHeight);
 
-    bf.bfSize = bi.biSizeImage + sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
-
+    // bfSize - total size of file (in bytes) - pixels, padding headers
+    bfOutfile.bfSize = biOutfile.biSizeImage + sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
 
     // write outfile's BITMAPFILEHEADER
-    fwrite(&bf, sizeof(BITMAPFILEHEADER), 1, outptr);
+    fwrite(&bfOutfile, sizeof(BITMAPFILEHEADER), 1, outptr);
 
     // write outfile's BITMAPINFOHEADER
-    fwrite(&bi, sizeof(BITMAPINFOHEADER), 1, outptr);
+    fwrite(&biOutfile, sizeof(BITMAPINFOHEADER), 1, outptr);
 
-    // determine padding for scanlines
-
-    // iterate over infile's scanlines
-    for (int i = 0, biHeight = abs(bi.biHeight)*num; i < biHeight; i++)
+    // iterate over number of new scanlines
+    for (int h = 0; h < biOutfile.biHeight; h++)
     {
-        //for factor times - num
-        for (int f = 0; f < num; f++)
+        // ?
+        if (h % num != 0)
         {
+            fseek(inptr, -bi.biWidth * sizeof(RGBTRIPLE), SEEK_CUR);
+        }
+
+        // iterate over pixels in scanline
+        for (int f = 0; f < bi.biWidth; f++)
+        {
+
             // temporary storage
+            RGBTRIPLE triple;
+            // read RGB triple from infile
+            fread(&triple, sizeof(RGBTRIPLE), 1, inptr);
 
-            // iterate over pixels in scanline
-            for (int j = 0; j < bi.biWidth; j++)
+            //for factor times - num
+            for (int w = 0; w < biOutfile.biWidth ; w++)
             {
-
-                RGBTRIPLE triple;
-                // read RGB triple from infile
-                fread(&triple, sizeof(RGBTRIPLE), 1, inptr);
                 // write RGB triple to outfile
                 fwrite(&triple, sizeof(RGBTRIPLE), 1, outptr);
             }
         }
 
         // skip over padding, if any
-        fseek(inptr, paddingOutfile, SEEK_CUR);
+        fseek(inptr, paddingInfile, SEEK_CUR);
+        // fseek(inptr, -((startingWidth * sizeof(RGBTRIPLE)) + paddingInfile), SEEK_CUR);
 
-        // then add it back (to demonstrate how)
         for (int k = 0; k < paddingOutfile; k++)
         {
             fputc(0x00, outptr);
         }
     }
+
+    fseek(inptr, (startingWidth * sizeof(RGBTRIPLE) + paddingInfile), SEEK_CUR);
 
     // close infile
     fclose(inptr);
