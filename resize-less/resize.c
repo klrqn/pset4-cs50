@@ -76,9 +76,9 @@ int main(int argc, char* argv[])
     bi_new.biHeight = bi.biHeight*num;
     bi_new.biWidth = bi.biWidth*num;
 
-    // why?
-    bi.biHeight = bi_new.biHeight;
-    bi.biWidth = bi_new.biWidth;
+    // // why?
+    // bi.biHeight = bi_new.biHeight;
+    // bi.biWidth = bi_new.biWidth;
 
     // update padding
     int padding =  (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
@@ -135,6 +135,12 @@ int main(int argc, char* argv[])
             }
         }
     }
+
+    bf = bf_new;
+    bi = bi_new;
+
+    printf("bf.bfSize = %i\n", bf.bfSize);
+
     // close infile
     fclose(inptr);
     // close outfile
