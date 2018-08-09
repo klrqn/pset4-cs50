@@ -1,44 +1,40 @@
-/**
- * copy.c
- *
- * Computer Science 50
- * Problem Set 4
- *
- * Copies a BMP piece by piece, just because.
- */
-
 #include <stdio.h>
 #include <stdlib.h>
+
 #include "bmp.h"
-int main(int argc, char* argv[])
+
+int main(int argc, char *argv[])
 {
-    // 4 arguments
+    // ensure proper usage
     if (argc != 4)
     {
-        printf("Usage: ./copy num infile outfile\n");
+        fprintf(stderr, "Usage: resize n infile outfile\n");
         return 1;
     }
-    //Checks for num
-    int num = atoi(argv[1]);
-    if (num < 1 || num > 100)
+
+    // make sure resize is under 100
+    uint8_t num = atoi(argv[1]);
+    // printf("n = %i\n", num);
+    if (num > 100 || num < 1)
     {
-        printf("Must be between 0 and 100\n");
+        fprintf(stderr, "n must be a positive integer less than 100\n");
         return 2;
     }
 
-
-    char* infile = argv[2];
-    char* outfile = argv[3];
+    // remember filenames
+    char *infile = argv[2];
+    char *outfile = argv[3];
 
     // open input file
-    FILE* inptr = fopen(infile, "r");
+    FILE *inptr = fopen(infile, "r");
     if (inptr == NULL)
     {
-        printf("Could not open %s.\n", infile);
+        fprintf(stderr, "could not open %s.\n", infile);
         return 3;
     }
+
     // open output file
-    FILE* outptr = fopen(outfile, "w");
+    FILE *outptr = fopen(outfile, "w");
     if (outptr == NULL)
     {
         fclose(inptr);
@@ -46,15 +42,14 @@ int main(int argc, char* argv[])
         return 4;
     }
 
-    // create struct of .bmp fileheader
     BITMAPFILEHEADER bf;
-    // read input file's BITMAPFILEHEADER
+    // read infile's BITMAPFILEHEADER and assign to 'bf'
     fread(&bf, sizeof(BITMAPFILEHEADER), 1, inptr);
 
-    // create struct of .bmp infoheader
     BITMAPINFOHEADER bi;
-    // read infile's BITMAPINFOHEADER
+    // read infile's BITMAPINFOHEADER and assign to 'bi'
     fread(&bi, sizeof(BITMAPINFOHEADER), 1, inptr);
+
 
     // ensure infile is (likely) a 24-bit uncompressed BMP 4.0
     if (bf.bfType != 0x4d42 || bf.bfOffBits != 54 || bi.biSize != 40 ||
@@ -63,88 +58,121 @@ int main(int argc, char* argv[])
         fclose(outptr);
         fclose(inptr);
         fprintf(stderr, "Unsupported file format.\n");
-        return 5;
+        return 4;
     }
 
-    // Initialize new headers and set them to the original
-    BITMAPFILEHEADER bf_new;
-    BITMAPINFOHEADER bi_new;
-    bf_new = bf;
-    bi_new = bi;
+    // init new headers and set to original .bmp
+    BITMAPFILEHEADER new_bf;
+    BITMAPINFOHEADER new_bi;
+    new_bf = bf;
+    new_bi = bi;
 
-    // set new headers height/width to old * arg[1]
-    bi_new.biHeight = bi.biHeight*num;
-    bi_new.biWidth = bi.biWidth*num;
+    // get the width, height, and padding of the infile image
+    int old_padding = (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
+    // int old_width = bi.biWidth;
+    // int old_height = bi.biHeight;
 
-    // // why?
-    // bi.biHeight = bi_new.biHeight;
-    // bi.biWidth = bi_new.biWidth;
+    // increase the height, witdth, and padding of the header info for the outfile
+    int new_padding = (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
+    new_bi.biHeight = bi.biHeight * num;
+    new_bi.biWidth = bi.biWidth * num;
 
-    // update padding
-    int padding =  (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
-    int new_padding =  (4 - (bi_new.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
+    // bi.biSizeImage = ((bi.biWidth * sizeof(RGBTRIPLE)) + new_padding) * abs(bi.biHeight);
+    // bf.bfSize = bi.biSizeImage + sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
 
-    // update image size
-    bi_new.biSizeImage = (bi_new.biWidth *sizeof(RGBTRIPLE) + new_padding) * abs(bi_new.biHeight);
-    // bfSize = biSizeImage + bi.biSize (fixed) + bf.bfSize
-    bf_new.bfSize = bi_new.biSizeImage + bi_new.biSize + bf_new.bfSize;
+    // out_bi.biSizeImage = abs(out_bi.biHeight) * (out_bi.biWidth * sizeof(RGBTRIPLE) + out_padding);
+    // out_bf.bfSize = (out_bi.biSizeImage + 54);
 
-    // write .bmp headers to output file
-    fwrite(&bf_new, sizeof(BITMAPFILEHEADER), 1, outptr);
-    fwrite(&bi_new, sizeof(BITMAPINFOHEADER), 1, outptr);
+    // :( resizes small.bmp correctly when n is 2
+    //     Header field bfSize doesn't match. Expected 0xae, not 0xb4 - 174 / 180 = 6
+    // :( resizes small.bmp correctly when n is 3                                           + 12
+    //     Header field bfSize doesn't match. Expected 0x132, not 0x144 - 306 / 324 = 18
+    // :( resizes small.bmp correctly when n is 4                                           + 18
+    //     Header field bfSize doesn't match. Expected 0x1e6, not 0x20a - 486 / 522 = 36
+    // biSizeImage - total size of image (in bytes) including pixels and padding 3*4 / 12
+    new_bi.biSizeImage = (sizeof(RGBTRIPLE) * new_bi.biWidth + new_padding) * abs(new_bi.biHeight);
 
-    printf("bf_new.bfSize = %i\n", bf_new.bfSize);
-    printf("bf.bfSize = %i\n", bf.bfSize);
+    // bfSize - total size of file (in bytes) - pixels, padding headers
+    new_bf.bfSize = new_bi.biSizeImage + 54; // sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
 
-    // iterate over infile's scanlines (height)
-    for (int i = 0; i < abs(bi.biHeight); i++)
+    // write outfile's BITMAPFILEHEADER
+    fwrite(&new_bf, sizeof(BITMAPFILEHEADER), 1, outptr);
+    // write outfile's BITMAPINFOHEADER
+    fwrite(&new_bi, sizeof(BITMAPINFOHEADER), 1, outptr);
+
+    // iterate over infile's scanlines
+    for (int h = 0; h < abs(bi.biHeight); h++)
     {
-        // multiply input files read by the factor n given in argv[1]
-        for (int n = 0; n < num; n++)
+        //for factor times - num
+        for (int f = 0; f < num; f++)
         {
-            // iterate over pixels in scanline
-            for (int j = 0; j < bi.biWidth; j++)
+            // iterate over pixels in scanline - factor
+            for (int w = 0; w < bi.biWidth; w++)
             {
                 // temporary storage
                 RGBTRIPLE triple;
 
-                // read RGB triple from input file
+                // read RGB triple from infile
                 fread(&triple, sizeof(RGBTRIPLE), 1, inptr);
 
-                // write RGB triple to output file # number of times
-                for (int r = 0; r < num; r++)
+                //for factor times - num
+                for (int g = 0; g < num; g++)
                 {
+                    // write RGB triple to outfile
                     fwrite(&triple, sizeof(RGBTRIPLE), 1, outptr);
                 }
             }
 
-            // pass over input file's padding
-            fseek(inptr, padding, SEEK_CUR);
+            // skip over padding, if any
+            fseek(inptr, old_padding, SEEK_CUR);
 
-            //Add % 4 padding to new image size
             for (int k = 0; k < new_padding; k++)
             {
                 fputc(0x00, outptr);
             }
 
             // move cursor of input file back "n" num times
-            if (n < num - 1)
+            if (f < num - 1)
             {
-                long offset = bi.biWidth * sizeof(RGBTRIPLE) + padding;
+                long offset = bi.biWidth * sizeof(RGBTRIPLE) + old_padding;
                 fseek(inptr, -offset, SEEK_CUR);
             }
         }
     }
 
-    bf = bf_new;
-    bi = bi_new;
-
-    printf("bf.bfSize = %i\n", bf.bfSize);
-
     // close infile
     fclose(inptr);
+
     // close outfile
     fclose(outptr);
-    // that's all folks
+
+    // success
     return 0;
 }
+
+/*
+
+TODO
+
+- open file
+- update outfile's header info
+- read infile's scanline pixel by pixel
+- resize horizontially
+    - remember padding!
+- resize vertically
+
+UPDATE HEADER
+
+
+// biWidth     - width of image(in pixels) not including padding
+// biHeight    - height of image (pixels)
+// biSizeImage - total size of image (in bytes) including pixels and padding 3*4 / 12
+// bfSize      - total size of file (in bytes) - pixels, padding headers
+// bf.bfSize   - bi.biSizeImage + sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER)
+
+old - bi.biWidth        new - bi.biwidth *= n
+old - bi.biHeight       new - bi.biHeight *= n
+old - bi.biSizeImage    new - bi.biSizeImage ???n
+old - bf.bfSize         new - bf.bfSize ???
+
+*/
