@@ -13,7 +13,8 @@ int main(int argc, char *argv[])
     }
 
     // make sure resize is under 100
-    uint8_t num = atoi(argv[1]);
+    // uint8_t
+    int num = atoi(argv[1]);
     // printf("n = %i\n", num);
     if (num > 100 || num < 1)
     {
@@ -50,6 +51,11 @@ int main(int argc, char *argv[])
     // read infile's BITMAPINFOHEADER and assign to 'bi'
     fread(&bi, sizeof(BITMAPINFOHEADER), 1, inptr);
 
+    // init new headers and set to original .bmp
+    BITMAPFILEHEADER new_bf;
+    new_bf = bf;
+    BITMAPINFOHEADER new_bi;
+    new_bi = bi;
 
     // ensure infile is (likely) a 24-bit uncompressed BMP 4.0
     if (bf.bfType != 0x4d42 || bf.bfOffBits != 54 || bi.biSize != 40 ||
@@ -61,21 +67,13 @@ int main(int argc, char *argv[])
         return 4;
     }
 
-    // init new headers and set to original .bmp
-    BITMAPFILEHEADER new_bf;
-    BITMAPINFOHEADER new_bi;
-    new_bf = bf;
-    new_bi = bi;
-
-    // get the width, height, and padding of the infile image
+    // get the padding of the infile image
     int old_padding = (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
-    // int old_width = bi.biWidth;
-    // int old_height = bi.biHeight;
 
     // increase the height, witdth, and padding of the header info for the outfile
-    int new_padding = (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
     new_bi.biHeight = bi.biHeight * num;
     new_bi.biWidth = bi.biWidth * num;
+    int new_padding = (4 - (new_bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
 
     // bi.biSizeImage = ((bi.biWidth * sizeof(RGBTRIPLE)) + new_padding) * abs(bi.biHeight);
     // bf.bfSize = bi.biSizeImage + sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
@@ -90,10 +88,10 @@ int main(int argc, char *argv[])
     // :( resizes small.bmp correctly when n is 4                                           + 18
     //     Header field bfSize doesn't match. Expected 0x1e6, not 0x20a - 486 / 522 = 36
     // biSizeImage - total size of image (in bytes) including pixels and padding 3*4 / 12
-    new_bi.biSizeImage = (sizeof(RGBTRIPLE) * new_bi.biWidth + new_padding) * abs(new_bi.biHeight);
+    new_bi.biSizeImage = ((sizeof(RGBTRIPLE) * new_bi.biWidth) + new_padding) * abs(new_bi.biHeight);
 
     // bfSize - total size of file (in bytes) - pixels, padding headers
-    new_bf.bfSize = new_bi.biSizeImage + 54; // sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+    new_bf.bfSize = new_bi.biSizeImage + sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
 
     // write outfile's BITMAPFILEHEADER
     fwrite(&new_bf, sizeof(BITMAPFILEHEADER), 1, outptr);
@@ -101,30 +99,26 @@ int main(int argc, char *argv[])
     fwrite(&new_bi, sizeof(BITMAPINFOHEADER), 1, outptr);
 
     // iterate over infile's scanlines
-    for (int h = 0; h < abs(bi.biHeight); h++)
+    for (int i = 0; i < abs(bi.biHeight); i++)
     {
-        //for factor times - num
-        for (int f = 0; f < num; f++)
+        // by the scale provided
+        for (int n = 0; n < num; n++)
         {
-            // iterate over pixels in scanline - factor
-            for (int w = 0; w < bi.biWidth; w++)
+            // iterate over pixels in scanline
+            for (int k = 0; k < abs(new_bi.biHeight) + new_padding; k++)
             {
-                // temporary storage
-                RGBTRIPLE triple;
+            // temporary storage
+            RGBTRIPLE triple;
 
-                // read RGB triple from infile
-                fread(&triple, sizeof(RGBTRIPLE), 1, inptr);
+            // read RGB triple from infile
+            fread(&triple, sizeof(RGBTRIPLE), 1, inptr);
 
-                //for factor times - num
-                for (int g = 0; g < num; g++)
+                for (int l = 0; l < num; l++)
                 {
                     // write RGB triple to outfile
                     fwrite(&triple, sizeof(RGBTRIPLE), 1, outptr);
                 }
             }
-
-            // skip over padding, if any
-            fseek(inptr, old_padding, SEEK_CUR);
 
             for (int k = 0; k < new_padding; k++)
             {
@@ -132,14 +126,14 @@ int main(int argc, char *argv[])
             }
 
             // move cursor of input file back "n" num times
-            if (f < num - 1)
+            if (n < num - 1)
             {
-                long offset = bi.biWidth * sizeof(RGBTRIPLE) + old_padding;
-                fseek(inptr, -offset, SEEK_CUR);
+                fseek(inptr, -(bi.biWidth * (int)sizeof(RGBTRIPLE)), SEEK_CUR);
             }
         }
+        // skip over padding if any
+        fseek(inptr, old_padding, SEEK_CUR);
     }
-
     // close infile
     fclose(inptr);
 
